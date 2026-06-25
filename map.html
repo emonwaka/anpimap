@@ -54,6 +54,9 @@
   .st{font-size:13px; font-weight:700}
   .st.safe{color:var(--safe)} .st.minor{color:var(--minor)} .st.help{color:var(--help)} .st.none{color:var(--none)}
   .meta{color:var(--muted); font-size:12px}
+  .acc{display:inline-block; font-size:10px; font-weight:700; border-radius:6px; padding:0 5px; margin-left:2px; vertical-align:middle}
+  .acc-detail{color:#166534; background:#dcfce7; border:1px solid #bbf7d0}
+  .acc-rough{color:#475569; background:#f1f5f9; border:1px solid #e2e8f0}
   .cmt{color:#334155; font-size:12px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
   .right{flex:0 0 auto; text-align:right}
   .loading{color:var(--muted); font-size:13px; padding:14px 4px}
@@ -196,36 +199,50 @@
       return { m:m, r:valid ? r : null, info:info, pinPref:pinPref, coords:coords, needReport:needReport };
     });
 
-    // ピン描画：精密座標があればそこへ、無ければ県重心へ（同一県は微小オフセットで重なり回避）
+    // ピン描画：
+    //   精密(GPS共有)    … くっきりした点「現在地」
+    //   大まか(県レベル回答) … 薄い大きな円＋中央の点「県内のどこか」
+    //   未回答           … 小さめの控えめな点
     pinLayer.clearLayers();
     const bounds = [];
 
-    function addPin(pos, x, precise){
+    function addPin(x){
       const info = x.info, r = x.r;
-      const mk = L.circleMarker(pos, {
-        radius: precise ? 10 : 9, color:"#fff", weight:2, fillColor:info.color, fillOpacity:1
-      });
-      mk.bindPopup(
+      const precise = !!x.coords;
+      const pos = precise ? x.coords : x._pos;
+      const accuracy = precise
+        ? "📍現在地〔詳細〕"
+        : (r ? esc(x.pinPref) + "・県内のどこか〔大まか〕" : "未回答");
+      const popup =
         "<div class='pp-name'>"+esc(x.m.name)+(x.m.relation?" <span style='color:#64748b'>("+esc(x.m.relation)+")</span>":"")+"</div>"+
         "<div class='pp-st' style='color:"+info.color+"'>"+info.jp+"</div>"+
-        "<div class='meta'>"+(precise?"📍現在地":esc(x.pinPref))+(r?"　"+relTime(r.time):"")+"</div>"+
+        "<div class='meta'>"+accuracy+(r?"　"+relTime(r.time):"")+"</div>"+
         (x.needReport?"<div class='meta' style='color:#b45309'>※対象地震あり・要再報告</div>":"")+
-        (r&&r.comment?"<div>"+esc(r.comment)+"</div>":"")
-      );
-      mk.addTo(pinLayer);
+        (r&&r.comment?"<div>"+esc(r.comment)+"</div>":"");
+
+      // 大まかな位置は「この辺り」を薄い面で表現（実際よりピンポイントに見せない）
+      if(!precise && r){
+        L.circle(pos, { radius:35000, color:info.color, weight:1, opacity:0.5, fillColor:info.color, fillOpacity:0.12 })
+          .bindPopup(popup).addTo(pinLayer);
+      }
+      const dot = L.circleMarker(pos, {
+        radius: precise ? 10 : (r ? 7 : 6),
+        color:"#fff", weight:2, fillColor:info.color, fillOpacity:(precise||r) ? 1 : 0.85
+      });
+      dot.bindPopup(popup).addTo(pinLayer);
       bounds.push(pos);
     }
 
     const byPref = {};
     view.forEach(function(x){
-      if(x.coords){ addPin(x.coords, x, true); }
+      if(x.coords){ addPin(x); }   // 精密はそのまま
       else { (byPref[x.pinPref] = byPref[x.pinPref] || []).push(x); }
     });
     Object.keys(byPref).forEach(function(pref){
       const base = PREF_CENTROID[pref];
       if(!base) return;
       const group = byPref[pref];
-      group.forEach(function(x, i){ addPin(offsetPos(base, i, group.length), x, false); });
+      group.forEach(function(x, i){ x._pos = offsetPos(base, i, group.length); addPin(x); });
     });
 
     // 集計
@@ -246,6 +263,12 @@
 
     $("#roster").innerHTML = rows.map(function(x){
       const r = x.r, info = x.info;
+      const precise = !!x.coords;
+      // 位置と精度ラベル
+      let loc;
+      if(precise)      loc = "📍現在地 <span class='acc acc-detail'>詳細</span>";
+      else if(r)       loc = esc(x.pinPref) + " <span class='acc acc-rough'>県内</span>";
+      else             loc = "—";
       return "<li class='row'>"+
         "<span class='badge' style='background:"+info.color+"'></span>"+
         "<span class='who'>"+
@@ -255,7 +278,7 @@
         "</span>"+
         "<span class='right'>"+
           "<div class='st "+info.cls+"'>"+info.jp+"</div>"+
-          "<div class='meta'>"+esc(x.pinPref)+(r?"・"+relTime(r.time):"")+"</div>"+
+          "<div class='meta'>"+loc+(r?"・"+relTime(r.time):"")+"</div>"+
         "</span>"+
       "</li>";
     }).join("");
