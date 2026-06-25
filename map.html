@@ -66,6 +66,7 @@
   .src{margin-top:14px; padding-top:10px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; line-height:1.6}
   .src a{color:#2563eb} .src code{background:#f1f5f9; border-radius:4px; padding:0 4px; font-size:10px}
 
+  .epi{color:#dc2626; font-size:22px; font-weight:900; line-height:24px; text-align:center; text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
   .leaflet-popup-content{font-size:13px; line-height:1.5}
   .pp-name{font-weight:800; font-size:14px}
   .pp-st{font-weight:700}
@@ -389,13 +390,12 @@
         });
         if(prefLayer) prefLayer.setStyle(styleFeature);
 
-        // 震央＋影響の目安円（半径はマグニチュード基準のおおまかな目安）
+        // 震源は ✕ マーカーで表示（揺れの強弱は県の色分けで表す。目安円は廃止）
         const lat = Number(hypo.latitude), lng = Number(hypo.longitude);
         if(!isNaN(lat) && !isNaN(lng) && lat!==0){
-          const m = Number(mag); const rKm = isNaN(m) ? 40 : Math.max(25, m*25);
-          L.circle([lat,lng], { radius:rKm*1000, color:"#dc2626", weight:1, fillColor:"#dc2626", fillOpacity:0.06 }).addTo(quakeLayer);
-          L.marker([lat,lng]).addTo(quakeLayer)
-            .bindPopup("<div class='pp-name'>震源："+esc(name)+"</div>"+(mag?"<div>M"+esc(mag)+"</div>":"")+"<div>最大"+maxS+"</div>");
+          const epiIcon = L.divIcon({ className:"", html:"<div class='epi'>✕</div>", iconSize:[24,24], iconAnchor:[12,12] });
+          L.marker([lat,lng], { icon:epiIcon, title:"震源" }).addTo(quakeLayer)
+            .bindPopup("<div class='pp-name'>震源："+esc(name)+"</div>"+(mag?"<div>M"+esc(mag)+"</div>":"")+(depthTxt?"<div>"+esc(depthTxt)+"</div>":"")+"<div>最大"+maxS+"</div>");
         }
       })
       .catch(function(){ /* 取得失敗時は何もしない */ });
