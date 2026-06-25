@@ -37,6 +37,7 @@
   .quake{margin:12px 0 4px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px; padding:10px 12px; font-size:13px; color:#7c2d12; display:none}
   .quake b{color:#9a3412}
   .quake .areas{margin-top:6px; color:#9a3412; font-size:12px; line-height:1.5}
+  .demo-note{background:#fee2e2; border:1px solid #fecaca; color:#991b1b; font-weight:800; border-radius:8px; padding:6px 10px; margin-bottom:8px; font-size:12px}
   .shindo-legend{display:flex; flex-wrap:wrap; gap:6px 10px; margin-top:8px}
   .shindo-legend .sl{display:flex; align-items:center; gap:4px; font-size:11px; color:#475569; font-weight:700}
   .shindo-legend .slc{width:12px; height:12px; border-radius:3px; border:1px solid rgba(0,0,0,.15)}
@@ -352,10 +353,38 @@
   }); }
 
   // ---------- 地震情報（P2P地震情報 API・ブラウザから直接取得） ----------
+  // デモ：map.html?demo=1 でダミー地震を表示し、県の色分けを確認できる（実データは取得しない）
+  const DEMO_QUAKE = new URLSearchParams(location.search).get("demo") === "1";
+  const DEMO_DATA = [{
+    id:"demo",
+    earthquake:{
+      time:"テスト表示", maxScale:70,
+      hypocenter:{ name:"宮城県沖（デモ）", latitude:38.1, longitude:142.0, depth:50, magnitude:7.0 }
+    },
+    points:[
+      {pref:"宮城県",addr:"宮城県栗原市",scale:70,isArea:false},
+      {pref:"福島県",addr:"福島県福島市",scale:60,isArea:false},
+      {pref:"岩手県",addr:"岩手県盛岡市",scale:55,isArea:false},
+      {pref:"山形県",addr:"山形県山形市",scale:50,isArea:false},
+      {pref:"秋田県",addr:"秋田県秋田市",scale:45,isArea:false},
+      {pref:"青森県",addr:"青森県青森市",scale:40,isArea:false},
+      {pref:"茨城県",addr:"茨城県水戸市",scale:30,isArea:false},
+      {pref:"栃木県",addr:"栃木県宇都宮市",scale:20,isArea:false},
+      {pref:"新潟県",addr:"新潟県新潟市",scale:20,isArea:false},
+      {pref:"群馬県",addr:"群馬県前橋市",scale:10,isArea:false},
+      {pref:"東京都",addr:"東京都千代田区",scale:10,isArea:false}
+    ]
+  }];
+
   function loadQuake(){
+    if(DEMO_QUAKE){ renderQuake(DEMO_DATA, true); return; }
     fetch("https://api.p2pquake.net/v2/history?codes=551&limit=1")
       .then(function(r){ return r.json(); })
-      .then(function(data){
+      .then(function(data){ renderQuake(data, false); })
+      .catch(function(){ /* 取得失敗時は何もしない */ });
+  }
+
+  function renderQuake(data, isDemo){
         quakeLayer.clearLayers();
         if(!data || !data.length){ return; }
         const q = data[0], eq = q.earthquake || {}, hypo = eq.hypocenter || {};
@@ -377,7 +406,8 @@
           [10,20,30,40,45,50,55,60,70].map(function(s){
             return "<span class='sl'><span class='slc' style='background:"+shindoColor(s)+"'></span>"+SCALE[s]+"</span>";
           }).join("") + "</div>";
-        box.innerHTML = "<b>直近の地震</b>　"+esc(eq.time||"")+"<br>"+
+        box.innerHTML = (isDemo ? "<div class='demo-note'>⚠ これはテスト表示です（実際の地震ではありません）</div>" : "")+
+          "<b>直近の地震</b>　"+esc(eq.time||"")+"<br>"+
           "震源：<b>"+esc(name)+"</b>"+(mag?"（M"+esc(mag)+"）":"")+(depthTxt?"　"+esc(depthTxt):"")+"　最大<b>"+maxS+"</b>"+
           (big.length?"<div class='areas'>震度4以上："+esc(big.join("、"))+"</div>":"")+
           legend;
@@ -397,8 +427,6 @@
           L.marker([lat,lng], { icon:epiIcon, title:"震源" }).addTo(quakeLayer)
             .bindPopup("<div class='pp-name'>震源："+esc(name)+"</div>"+(mag?"<div>M"+esc(mag)+"</div>":"")+(depthTxt?"<div>"+esc(depthTxt)+"</div>":"")+"<div>最大"+maxS+"</div>");
         }
-      })
-      .catch(function(){ /* 取得失敗時は何もしない */ });
   }
 
   // ---------- 起動・自動更新 ----------
