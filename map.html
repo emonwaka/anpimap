@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>安否確認マップ</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<style>
+  :root{
+    --safe:#16a34a; --minor:#d97706; --help:#dc2626; --none:#94a3b8;
+    --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#ffffff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic","Noto Sans JP",Meiryo,sans-serif;
+    color:var(--ink); height:100dvh; display:flex; flex-direction:column;
+  }
+  /* レイアウト：モバイル=縦, 横幅広い時=パネル左 */
+  #app{display:flex; flex-direction:column; height:100%}
+  #map{flex:1 1 auto; min-height:42dvh}
+  #panel{
+    flex:0 0 auto; max-height:58dvh; overflow:auto; background:#fff;
+    border-top:1px solid var(--line); padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+  }
+  @media (min-width:820px){
+    #app{flex-direction:row}
+    #map{order:2; height:100%}
+    #panel{order:1; width:360px; max-height:none; height:100%; border-top:0; border-right:1px solid var(--line)}
+  }
+  .ptop{display:flex; align-items:baseline; justify-content:space-between; gap:8px}
+  h1{font-size:19px; margin:0; font-weight:800}
+  .updated{font-size:12px; color:var(--muted)}
+  .refresh{margin-left:auto; background:#0f172a; color:#fff; border:0; border-radius:9px; padding:6px 10px; font:inherit; font-size:12px; font-weight:700; cursor:pointer}
+
+  .quake{margin:12px 0 4px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px; padding:10px 12px; font-size:13px; color:#7c2d12; display:none}
+  .quake b{color:#9a3412}
+  .quake .areas{margin-top:6px; color:#9a3412; font-size:12px; line-height:1.5}
+
+  .summary{display:flex; gap:6px; margin:12px 0 10px; flex-wrap:wrap}
+  .pill{display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:5px 10px; font-size:12px; font-weight:700; background:#fff}
+  .pill .sw{width:9px;height:9px;border-radius:50%}
+  .sw-safe{background:var(--safe)} .sw-minor{background:var(--minor)} .sw-help{background:var(--help)} .sw-none{background:var(--none)}
+
+  ul.roster{list-style:none; margin:0; padding:0}
+  li.row{display:flex; align-items:center; gap:10px; padding:10px 4px; border-top:1px solid var(--line)}
+  li.row:first-child{border-top:0}
+  .badge{flex:0 0 auto; width:10px; height:10px; border-radius:50%}
+  .who{flex:1 1 auto; min-width:0}
+  .nm{font-weight:700; font-size:15px}
+  .rel{color:var(--muted); font-size:12px; font-weight:600}
+  .rebadge{display:inline-block; font-size:11px; font-weight:800; color:#9a3412; background:#ffedd5; border:1px solid #fed7aa; border-radius:999px; padding:1px 7px; margin-left:4px; vertical-align:middle}
+  .st{font-size:13px; font-weight:700}
+  .st.safe{color:var(--safe)} .st.minor{color:var(--minor)} .st.help{color:var(--help)} .st.none{color:var(--none)}
+  .meta{color:var(--muted); font-size:12px}
+  .cmt{color:#334155; font-size:12px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .right{flex:0 0 auto; text-align:right}
+  .loading{color:var(--muted); font-size:13px; padding:14px 4px}
+
+  .leaflet-popup-content{font-size:13px; line-height:1.5}
+  .pp-name{font-weight:800; font-size:14px}
+  .pp-st{font-weight:700}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="panel">
+    <div class="ptop">
+      <div>
+        <h1>安否確認マップ</h1>
+        <div class="updated" id="updated">読み込み中…</div>
+      </div>
+      <button class="refresh" id="refreshBtn">更新</button>
+    </div>
+
+    <div class="quake" id="quakeBox"></div>
+
+    <div class="summary" id="summary"></div>
+
+    <ul class="roster" id="roster"><li class="loading">メンバー情報を読み込んでいます…</li></ul>
+  </div>
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<script>
+  // ====== 設定 ======
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbyjK5PyxE2R00luPVqvydlwvoNUnh0mONI6KEnHqhrhqNdgrmny7gJx6N1wR-SL0GoJvQ/exec"; // ← report.html と同じ URL
+  const DEFAULT_CENTER = [38.5, 138.5]; // 初期表示の中心（本州中央あたり）
+  const DEFAULT_ZOOM   = 5;
+  const REFRESH_MS = 30000;  // 安否データの更新間隔
+  const QUAKE_MS   = 60000;  // 地震情報の更新間隔
+  const WINDOW_HOURS_DEFAULT = 48;       // doGet が値を返さない場合の既定の表示時間窓（時間）
+  // ==================
+
+  // 都道府県の代表点（県庁所在地・近似）。ピンはこの座標に置く。
+  const PREF_CENTROID = {
+    "北海道":[43.06,141.35],"青森県":[40.82,140.74],"岩手県":[39.70,141.15],
+    "宮城県":[38.27,140.87],"秋田県":[39.72,140.10],"山形県":[38.24,140.36],
+    "福島県":[37.75,140.47],"茨城県":[36.34,140.45],"栃木県":[36.57,139.88],
+    "群馬県":[36.39,139.06],"埼玉県":[35.86,139.65],"千葉県":[35.61,140.12],
+    "東京都":[35.69,139.69],"神奈川県":[35.45,139.64],"新潟県":[37.90,139.02],
+    "富山県":[36.70,137.21],"石川県":[36.59,136.63],"福井県":[36.07,136.22],
+    "山梨県":[35.66,138.57],"長野県":[36.65,138.18],"岐阜県":[35.39,136.72],
+    "静岡県":[34.98,138.38],"愛知県":[35.18,136.91],"三重県":[34.73,136.51],
+    "滋賀県":[35.00,135.87],"京都府":[35.02,135.76],"大阪府":[34.69,135.52],
+    "兵庫県":[34.69,135.18],"奈良県":[34.69,135.83],"和歌山県":[34.23,135.17],
+    "鳥取県":[35.50,134.24],"島根県":[35.47,133.05],"岡山県":[34.66,133.93],
+    "広島県":[34.40,132.46],"山口県":[34.19,131.47],"徳島県":[34.07,134.56],
+    "香川県":[34.34,134.04],"愛媛県":[33.84,132.77],"高知県":[33.56,133.53],
+    "福岡県":[33.61,130.42],"佐賀県":[33.25,130.30],"長崎県":[32.74,129.87],
+    "熊本県":[32.79,130.74],"大分県":[33.24,131.61],"宮崎県":[31.91,131.42],
+    "鹿児島県":[31.56,130.56],"沖縄県":[26.21,127.68]
+  };
+
+  const STATUS = {
+    safe:  { jp:"無事",   color:"#16a34a", cls:"safe",  pri:3 },
+    minor: { jp:"軽傷",   color:"#d97706", cls:"minor", pri:1 },
+    help:  { jp:"要支援", color:"#dc2626", cls:"help",  pri:0 }
+  };
+  const NONE = { jp:"未回答", color:"#94a3b8", cls:"none", pri:2 };
+  const SCALE = {10:"1",20:"2",30:"3",40:"4",45:"5弱",50:"5強",55:"6弱",60:"6強",70:"7"};
+  const $ = (s)=>document.querySelector(s);
+
+  const map = L.map("map", { zoomControl:true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+  L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", {
+    maxZoom: 18,
+    attribution: "地理院タイル（国土地理院）"
+  }).addTo(map);
+
+  const pinLayer   = L.layerGroup().addTo(map);
+  const quakeLayer = L.layerGroup().addTo(map);
+
+  function scaleLabel(s){ return "震度" + (SCALE[s] || "不明"); }
+  function relTime(iso){
+    if(!iso) return "";
+    const t = new Date(iso).getTime();
+    if(isNaN(t)) return "";
+    const min = Math.floor((Date.now()-t)/60000);
+    if(min < 1) return "たった今";
+    if(min < 60) return min + "分前";
+    const h = Math.floor(min/60);
+    if(h < 24) return h + "時間前";
+    return Math.floor(h/24) + "日前";
+  }
+
+  // ---------- 安否データ ----------
+  function loadData(){
+    fetch(GAS_URL + "?type=data")
+      .then(function(r){ return r.json(); })
+      .then(render)
+      .catch(function(){ $("#updated").textContent = "更新に失敗しました（再試行します）"; });
+  }
+
+  function render(d){
+    if(!d || !d.ok){ $("#updated").textContent = "データを取得できませんでした"; return; }
+    const members = d.members || [];
+    const responses = d.responses || [];
+    const quakeByPref = d.quakeByPref || {};
+
+    // 表示時間窓（固定）＋手動リセットを反映した「これより新しい回答だけ有効」の基準時刻
+    const windowHours = (typeof d.windowHours === "number") ? d.windowHours : WINDOW_HOURS_DEFAULT;
+    const cutoffMs = Date.now() - windowHours * 3600 * 1000;
+    let effCutoffMs = cutoffMs;
+    if(d.boardResetAt){
+      const br = new Date(d.boardResetAt).getTime();
+      if(!isNaN(br)) effCutoffMs = Math.max(effCutoffMs, br);
+    }
+
+    // id ごとに最新の回答を取る
+    const latest = {};
+    responses.forEach(function(r){
+      const cur = latest[r.id];
+      if(!cur || new Date(r.time) > new Date(cur.time)) latest[r.id] = r;
+    });
+
+    // 各メンバーの状態を確定（valid=時間窓内の回答があるか / pinPref=ピンを置く県 / 要再報告判定）
+    const view = members.map(function(m){
+      const r = latest[m.id];
+      const valid = !!(r && new Date(r.time).getTime() >= effCutoffMs);
+      const info = valid ? (STATUS[r.status] || NONE) : NONE;
+      const pinPref = (valid && r.pref && PREF_CENTROID[r.pref]) ? r.pref : m.pref;
+      // 軽傷／要支援でGPS共有があれば、精密な現在地を直接ピンにする
+      const coords = (valid && typeof r.lat === "number" && typeof r.lng === "number") ? [r.lat, r.lng] : null;
+      // 『要再報告』：登録県に時間窓内の対象地震があり、その地震より後の回答が無い
+      const q = quakeByPref[m.pref];
+      let needReport = false;
+      if(q && q.time){
+        const qt = new Date(q.time).getTime();
+        if(!isNaN(qt) && qt >= cutoffMs){
+          needReport = !valid || (r && new Date(r.time).getTime() < qt);
+        }
+      }
+      return { m:m, r:valid ? r : null, info:info, pinPref:pinPref, coords:coords, needReport:needReport };
+    });
+
+    // ピン描画：精密座標があればそこへ、無ければ県重心へ（同一県は微小オフセットで重なり回避）
+    pinLayer.clearLayers();
+    const bounds = [];
+
+    function addPin(pos, x, precise){
+      const info = x.info, r = x.r;
+      const mk = L.circleMarker(pos, {
+        radius: precise ? 10 : 9, color:"#fff", weight:2, fillColor:info.color, fillOpacity:1
+      });
+      mk.bindPopup(
+        "<div class='pp-name'>"+esc(x.m.name)+(x.m.relation?" <span style='color:#64748b'>("+esc(x.m.relation)+")</span>":"")+"</div>"+
+        "<div class='pp-st' style='color:"+info.color+"'>"+info.jp+"</div>"+
+        "<div class='meta'>"+(precise?"📍現在地":esc(x.pinPref))+(r?"　"+relTime(r.time):"")+"</div>"+
+        (x.needReport?"<div class='meta' style='color:#b45309'>※対象地震あり・要再報告</div>":"")+
+        (r&&r.comment?"<div>"+esc(r.comment)+"</div>":"")
+      );
+      mk.addTo(pinLayer);
+      bounds.push(pos);
+    }
+
+    const byPref = {};
+    view.forEach(function(x){
+      if(x.coords){ addPin(x.coords, x, true); }
+      else { (byPref[x.pinPref] = byPref[x.pinPref] || []).push(x); }
+    });
+    Object.keys(byPref).forEach(function(pref){
+      const base = PREF_CENTROID[pref];
+      if(!base) return;
+      const group = byPref[pref];
+      group.forEach(function(x, i){ addPin(offsetPos(base, i, group.length), x, false); });
+    });
+
+    // 集計
+    const count = { safe:0, minor:0, help:0, none:0 };
+    view.forEach(function(x){ count[x.info.cls]++; });
+    $("#summary").innerHTML =
+      pill("safe","無事",count.safe)+pill("help","要支援",count.help)+
+      pill("minor","軽傷",count.minor)+pill("none","未回答",count.none);
+
+    // 名簿（要支援→軽傷→未回答→無事。さらに要再報告を未回答内で優先）
+    const rows = view.slice().sort(function(a,b){
+      if(a.info.pri !== b.info.pri) return a.info.pri - b.info.pri;
+      if(a.needReport !== b.needReport) return a.needReport ? -1 : 1;
+      const ta = a.r ? new Date(a.r.time).getTime() : 0;
+      const tb = b.r ? new Date(b.r.time).getTime() : 0;
+      return tb - ta;
+    });
+
+    $("#roster").innerHTML = rows.map(function(x){
+      const r = x.r, info = x.info;
+      return "<li class='row'>"+
+        "<span class='badge' style='background:"+info.color+"'></span>"+
+        "<span class='who'>"+
+          "<span class='nm'>"+esc(x.m.name)+"</span>"+(x.m.relation?" <span class='rel'>"+esc(x.m.relation)+"</span>":"")+
+          (x.needReport?" <span class='rebadge'>要再報告</span>":"")+
+          (r&&r.comment?"<div class='cmt'>"+esc(r.comment)+"</div>":"")+
+        "</span>"+
+        "<span class='right'>"+
+          "<div class='st "+info.cls+"'>"+info.jp+"</div>"+
+          "<div class='meta'>"+esc(x.pinPref)+(r?"・"+relTime(r.time):"")+"</div>"+
+        "</span>"+
+      "</li>";
+    }).join("");
+
+    if(bounds.length){ map.fitBounds(bounds, { padding:[40,40], maxZoom:9 }); }
+    const now = new Date();
+    $("#updated").textContent = "最終更新 " + now.toLocaleTimeString("ja-JP");
+  }
+
+  // 県重心まわりに決定的な微小オフセットを与える（同一県の複数ピンの重なり回避）
+  function offsetPos(base, i, total){
+    if(total <= 1) return [base[0], base[1]];
+    const R = 0.08; // 度（約9km）。県内に収まる程度の小さな円周上に配置
+    const ang = (2 * Math.PI * i) / total;
+    return [base[0] + R * Math.cos(ang), base[1] + R * Math.sin(ang)];
+  }
+
+  function pill(cls,label,n){
+    return "<span class='pill'><span class='sw sw-"+cls+"'></span>"+label+" "+n+"</span>";
+  }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];
+  }); }
+
+  // ---------- 地震情報（P2P地震情報 API・ブラウザから直接取得） ----------
+  function loadQuake(){
+    fetch("https://api.p2pquake.net/v2/history?codes=551&limit=1")
+      .then(function(r){ return r.json(); })
+      .then(function(data){
+        quakeLayer.clearLayers();
+        if(!data || !data.length){ return; }
+        const q = data[0], eq = q.earthquake || {}, hypo = eq.hypocenter || {};
+        const name = hypo.name || "不明";
+        const mag  = hypo.magnitude;
+        const maxS = scaleLabel(eq.maxScale);
+
+        // 震度4以上の地域を抽出
+        const big = (q.points||[]).filter(function(p){ return p.scale>=40; })
+          .sort(function(a,b){ return b.scale-a.scale; })
+          .slice(0,10).map(function(p){ return p.addr+"（"+scaleLabel(p.scale)+"）"; });
+
+        // バナー
+        const box = $("#quakeBox");
+        box.style.display = "block";
+        box.innerHTML = "<b>直近の地震</b>　"+esc(eq.time||"")+"<br>"+
+          "震源：<b>"+esc(name)+"</b>"+(mag?"（M"+esc(mag)+"）":"")+"　最大<b>"+maxS+"</b>"+
+          (big.length?"<div class='areas'>震度4以上："+esc(big.join("、"))+"</div>":"");
+
+        // 震央＋影響の目安円（半径はマグニチュード基準のおおまかな目安）
+        const lat = Number(hypo.latitude), lng = Number(hypo.longitude);
+        if(!isNaN(lat) && !isNaN(lng) && lat!==0){
+          const m = Number(mag); const rKm = isNaN(m) ? 40 : Math.max(25, m*25);
+          L.circle([lat,lng], { radius:rKm*1000, color:"#dc2626", weight:1, fillColor:"#dc2626", fillOpacity:0.06 }).addTo(quakeLayer);
+          L.marker([lat,lng]).addTo(quakeLayer)
+            .bindPopup("<div class='pp-name'>震源："+esc(name)+"</div>"+(mag?"<div>M"+esc(mag)+"</div>":"")+"<div>最大"+maxS+"</div>");
+        }
+      })
+      .catch(function(){ /* 取得失敗時は何もしない */ });
+  }
+
+  // ---------- 起動・自動更新 ----------
+  $("#refreshBtn").addEventListener("click", function(){ loadData(); loadQuake(); });
+  loadData(); loadQuake();
+  setInterval(loadData, REFRESH_MS);
+  setInterval(loadQuake, QUAKE_MS);
+</script>
+</body>
+</html>

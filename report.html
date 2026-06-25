@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>安否を共有</title>
+<style>
+  :root{
+    --safe:#16a34a; --safe-d:#15803d;
+    --minor:#d97706; --minor-d:#b45309;
+    --help:#dc2626; --help-d:#b91c1c;
+    --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9; --card:#ffffff;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic","Noto Sans JP",Meiryo,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.6;
+    min-height:100dvh; display:flex; flex-direction:column; align-items:center;
+    padding:24px 16px calc(24px + env(safe-area-inset-bottom));
+  }
+  .wrap{width:100%; max-width:480px}
+  header{margin-bottom:18px}
+  .eyebrow{font-size:13px; letter-spacing:.08em; color:var(--muted); font-weight:700}
+  h1{font-size:26px; margin:2px 0 0; font-weight:800; letter-spacing:.01em}
+  .lead{color:var(--muted); margin-top:6px; font-size:15px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; box-shadow:0 1px 2px rgba(15,23,42,.04)}
+
+  label.cmt{display:block; font-size:13px; color:var(--muted); font-weight:700; margin:2px 4px 6px}
+  textarea{
+    width:100%; border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+    font:inherit; font-size:15px; resize:vertical; min-height:52px; color:var(--ink); background:#fff;
+  }
+  textarea:focus{outline:3px solid #bfdbfe; border-color:#60a5fa}
+  select.pref{
+    width:100%; border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+    font:inherit; font-size:16px; color:var(--ink); background:#fff; margin-bottom:14px;
+  }
+  select.pref:focus{outline:3px solid #bfdbfe; border-color:#60a5fa}
+  .hint{font-size:12px; color:var(--muted); margin:8px 4px 16px}
+
+  .btns{display:flex; flex-direction:column; gap:12px}
+  button.status{
+    appearance:none; border:0; border-radius:14px; color:#fff; cursor:pointer;
+    padding:16px 18px; text-align:left; width:100%; display:flex; align-items:center; gap:14px;
+    min-height:72px; transition:transform .04s ease, filter .12s ease;
+  }
+  button.status:active{transform:scale(.985)}
+  button.status:focus-visible{outline:4px solid #1e293b; outline-offset:2px}
+  button.status:disabled{filter:grayscale(.4) opacity(.55); cursor:default}
+  .status .big{font-size:21px; font-weight:800; line-height:1.15}
+  .status .sub{font-size:13px; opacity:.92; font-weight:600}
+  .status .txt{display:flex; flex-direction:column}
+  .dot{width:14px; height:14px; border-radius:50%; background:#fff; flex:0 0 auto; box-shadow:0 0 0 4px rgba(255,255,255,.25)}
+  .b-safe{background:var(--safe)}  .b-safe:hover{background:var(--safe-d)}
+  .b-minor{background:var(--minor)} .b-minor:hover{background:var(--minor-d)}
+  .b-help{background:var(--help)}   .b-help:hover{background:var(--help-d)}
+
+  .foot{margin-top:18px; font-size:12px; color:var(--muted); text-align:center}
+
+  /* 状態表示 */
+  .sending,.done,.noid{display:none}
+  .center{text-align:center; padding:14px 6px}
+  .spinner{width:34px;height:34px;border-radius:50%;border:4px solid var(--line);border-top-color:#2563eb;margin:6px auto 12px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){ .spinner{animation:none} button.status{transition:none} }
+  .check{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:4px auto 12px;font-size:34px;color:#fff;font-weight:800}
+  .resultline{font-size:20px; font-weight:800; margin:2px 0}
+  .resultsub{color:var(--muted); font-size:14px; margin-top:6px}
+  .again{margin-top:18px; display:inline-block; background:#0f172a; color:#fff; text-decoration:none; padding:12px 20px; border-radius:12px; font-weight:700; border:0; font:inherit; cursor:pointer}
+  .again:focus-visible{outline:4px solid #1e293b; outline-offset:2px}
+  .warn{background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:12px; padding:12px 14px; font-size:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">家族の安否確認</div>
+    <h1 id="greet">状況を共有</h1>
+    <div class="lead" id="lead">ボタンを1つ押すと、今いる都道府県と状況が家族に届きます。</div>
+  </header>
+
+  <!-- 入力 -->
+  <div class="card" id="formCard">
+    <label class="cmt" for="pref">今いる都道府県</label>
+    <select id="pref" class="pref" aria-label="今いる都道府県"></select>
+    <label class="cmt" for="comment">ひとこと（任意・なくてもOK）</label>
+    <textarea id="comment" placeholder="例）家族みんな無事です／○○へ避難中"></textarea>
+    <div class="hint">「無事です」は選んだ都道府県で共有します。「軽いケガ」「助けが必要」を選んだときだけ、家族が居場所を特定できるよう現在地の共有を確認します。</div>
+    <div class="btns">
+      <button class="status b-safe"  data-status="safe">
+        <span class="dot"></span><span class="txt"><span class="big">無事です</span><span class="sub">ケガはありません</span></span>
+      </button>
+      <button class="status b-minor" data-status="minor">
+        <span class="dot"></span><span class="txt"><span class="big">軽いケガ</span><span class="sub">手当てできる範囲です</span></span>
+      </button>
+      <button class="status b-help"  data-status="help">
+        <span class="dot"></span><span class="txt"><span class="big">助けが必要</span><span class="sub">支援・救助を求めています</span></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- 送信中 -->
+  <div class="card sending" id="sendingCard">
+    <div class="center">
+      <div class="spinner"></div>
+      <div class="resultline">送信しています…</div>
+      <div class="resultsub" id="sendingSub">今いる都道府県を確認しています</div>
+    </div>
+  </div>
+
+  <!-- 完了 -->
+  <div class="card done" id="doneCard">
+    <div class="center">
+      <div class="check" id="doneCheck">✓</div>
+      <div class="resultline" id="doneLine">送信しました</div>
+      <div class="resultsub" id="doneSub"></div>
+      <button class="again" id="againBtn">状況を更新する</button>
+    </div>
+  </div>
+
+  <!-- id が無いとき -->
+  <div class="card noid" id="noidCard">
+    <div class="warn">このページは家族から共有された<strong>専用リンク</strong>から開いてください。リンクが正しくないか、コピーが途中で切れている可能性があります。</div>
+  </div>
+
+  <div class="foot">このリンクはあなた専用です</div>
+</div>
+
+<script>
+  // ====== 設定：デプロイした Apps Script ウェブアプリの URL に変更 ======
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbyjK5PyxE2R00luPVqvydlwvoNUnh0mONI6KEnHqhrhqNdgrmny7gJx6N1wR-SL0GoJvQ/exec";
+  // ====================================================================
+
+  const STATUS_JP = { safe:"無事です", minor:"軽いケガ", help:"助けが必要" };
+  const STATUS_COLOR = { safe:"#16a34a", minor:"#d97706", help:"#dc2626" };
+
+  const PREF_LIST = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+
+  const params = new URLSearchParams(location.search);
+  const id = (params.get("id") || "").trim();
+
+  const $ = (s)=>document.querySelector(s);
+
+  // 都道府県プルダウンを生成
+  (function fillPref(){
+    const sel = $("#pref");
+    PREF_LIST.forEach(function(p){
+      const o = document.createElement("option");
+      o.value = p; o.textContent = p; sel.appendChild(o);
+    });
+  })();
+  function show(which){
+    ["formCard","sendingCard","doneCard","noidCard"].forEach(function(c){
+      const el = document.getElementById(c);
+      el.style.display = (c === which) ? "block" : "none";
+    });
+  }
+
+  if(!id){
+    show("noidCard");
+  } else {
+    show("formCard");
+    // 名前で呼びかけ＆登録県をプルダウンの初期値に（取れなくてもボタンは使える）
+    fetch(GAS_URL + "?type=member&id=" + encodeURIComponent(id))
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d && d.ok){
+          if(d.name) $("#greet").textContent = d.name + "さん、状況を教えてください";
+          if(d.pref && PREF_LIST.indexOf(d.pref) >= 0) $("#pref").value = d.pref;
+        }
+      }).catch(function(){});
+    // ボタン
+    document.querySelectorAll("button.status").forEach(function(b){
+      b.addEventListener("click", function(){ submit(b.getAttribute("data-status")); });
+    });
+    $("#againBtn").addEventListener("click", function(){ show("formCard"); });
+  }
+
+  function submit(status){
+    document.querySelectorAll("button.status").forEach(function(b){ b.disabled = true; });
+    const comment = $("#comment").value.trim();
+    const pref = $("#pref").value;
+    show("sendingCard");
+
+    if(status === "safe"){
+      // 無事：GPSは使わず、選んだ都道府県で共有
+      $("#sendingSub").textContent = pref + "として共有しています";
+      send(status, comment, pref, null, null);
+      return;
+    }
+
+    // 軽傷／要支援：家族が居場所を特定できるよう、このときだけ現在地を確認
+    $("#sendingSub").textContent = "現在地を確認しています（家族に居場所を伝えます）";
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        function(pos){ send(status, comment, pref, pos.coords.latitude, pos.coords.longitude); },
+        function(){ $("#sendingSub").textContent = "現在地が取れないため " + pref + " として共有します"; send(status, comment, pref, null, null); },
+        { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+      );
+    } else {
+      send(status, comment, pref, null, null);
+    }
+  }
+
+  function send(status, comment, pref, lat, lng){
+    const payload = { id:id, status:status, comment:comment, pref:pref, lat:lat, lng:lng };
+    // Content-Type を付けない＝text/plain 扱いになり CORS プリフライトを回避できる
+    fetch(GAS_URL, { method:"POST", body: JSON.stringify(payload) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d && d.ok){ done(d.name, status, d.pref, d.precise); }
+        else { done(null, status, pref, false); }
+      })
+      .catch(function(){ done(null, status, pref, false); });
+  }
+
+  function done(name, status, pref, precise){
+    const color = STATUS_COLOR[status] || "#16a34a";
+    $("#doneCheck").style.background = color;
+    $("#doneLine").textContent = (name ? name + "さん：" : "") + "「" + (STATUS_JP[status]||"") + "」を共有しました";
+    $("#doneSub").textContent = precise
+      ? "現在地つきで家族に共有しました。状況が変わったら更新できます。"
+      : ((pref ? pref + "として" : "") + "家族に共有しました。状況が変わったら更新できます。");
+    document.querySelectorAll("button.status").forEach(function(b){ b.disabled = false; });
+    show("doneCard");
+  }
+</script>
+</body>
+</html>
