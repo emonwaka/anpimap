@@ -169,6 +169,8 @@
     show("noidCard");
   } else {
     show("formCard");
+    // 地図は自分専用リンク（自分とグループが重なる人だけ表示される）
+    $("#toMapBtn").href = "map.html?id=" + encodeURIComponent(id);
     // 名前で呼びかけ＆登録県をプルダウンの初期値に（取れなくてもボタンは使える）
     fetch(GAS_URL + "?type=member&id=" + encodeURIComponent(id))
       .then(function(r){return r.json();})
