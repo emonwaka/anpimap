@@ -4,6 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>安否を共有</title>
+<!-- ホーム画面アプリ（PWA）：地図アプリ内から報告フォームへ遷移しても同じアプリ内で開く -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0f172a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="安否マップ">
+<link rel="apple-touch-icon" href="icon.svg">
 <style>
   :root{
     --safe:#16a34a; --safe-d:#15803d;
@@ -169,6 +177,7 @@
     show("noidCard");
   } else {
     show("formCard");
+    try { localStorage.setItem("anpi_id", id); } catch(e){} // ホーム画面アプリが id を記憶
     // 地図は自分専用リンク（自分とグループが重なる人だけ表示される）
     $("#toMapBtn").href = "map.html?id=" + encodeURIComponent(id);
     // 名前で呼びかけ＆登録県をプルダウンの初期値に（取れなくてもボタンは使える）
