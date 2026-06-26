@@ -33,6 +33,11 @@
   h1{font-size:19px; margin:0; font-weight:800}
   .updated{font-size:12px; color:var(--muted)}
   .refresh{margin-left:auto; background:#0f172a; color:#fff; border:0; border-radius:9px; padding:6px 10px; font:inherit; font-size:12px; font-weight:700; cursor:pointer}
+  .ptop-btns{display:flex; gap:6px; flex:0 0 auto}
+  .toggle{background:#fff; color:#0f172a; border:1px solid var(--line); border-radius:9px; padding:6px 10px; font:inherit; font-size:12px; font-weight:700; cursor:pointer}
+  /* 折りたたみ時：名簿・地震詳細・出典を隠し、地図を広げる（モバイルの縦並びのみ） */
+  #panel.collapsed .quake, #panel.collapsed .roster, #panel.collapsed .src{display:none}
+  @media (min-width:820px){ .toggle{display:none} }
 
   .quake{margin:12px 0 4px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px; padding:10px 12px; font-size:13px; color:#7c2d12; display:none}
   .quake b{color:#9a3412}
@@ -81,7 +86,10 @@
         <h1>安否確認マップ</h1>
         <div class="updated" id="updated">読み込み中…</div>
       </div>
-      <button class="refresh" id="refreshBtn">更新</button>
+      <div class="ptop-btns">
+        <button class="toggle" id="toggleBtn" type="button">地図を広く</button>
+        <button class="refresh" id="refreshBtn">更新</button>
+      </div>
     </div>
 
     <div class="quake" id="quakeBox"></div>
@@ -137,6 +145,8 @@
     help:  { jp:"要支援", color:"#dc2626", cls:"help",  pri:0 }
   };
   const NONE = { jp:"未回答", color:"#94a3b8", cls:"none", pri:2 };
+  // 閲覧者の専用id（自分とグループが重なる人だけ表示される）。report.html の「地図で見る」から付与。
+  const VIEWER_ID = (new URLSearchParams(location.search).get("id") || "").trim();
   const SCALE = {10:"1",20:"2",30:"3",40:"4",45:"5弱",50:"5強",55:"6弱",60:"6強",70:"7"};
   // 震度カラー（JMA配色に近い目安）。県ごとの色分けに使用。
   const SHINDO_COLOR = {10:"#C7CCD1",20:"#7AB8F5",30:"#69C2A3",40:"#F0E150",45:"#F5A742",50:"#F07B26",55:"#E14B3B",60:"#C0203A",70:"#8B1A8B"};
@@ -200,7 +210,7 @@
 
   // ---------- 安否データ ----------
   function loadData(){
-    fetch(GAS_URL + "?type=data")
+    fetch(GAS_URL + "?type=data" + (VIEWER_ID ? "&id=" + encodeURIComponent(VIEWER_ID) : ""))
       .then(function(r){ return r.json(); })
       .then(render)
       .catch(function(){ $("#updated").textContent = "更新に失敗しました（再試行します）"; });
@@ -208,6 +218,13 @@
 
   function render(d){
     if(!d || !d.ok){ $("#updated").textContent = "データを取得できませんでした"; return; }
+    if(d.needId){
+      $("#updated").textContent = "専用リンクが必要です";
+      $("#summary").innerHTML = "";
+      $("#roster").innerHTML = "<li class='loading'>この地図は、家族から共有された<b>専用リンク</b>（報告フォームの「地図でみんなの状況を見る」）から開いてください。</li>";
+      pinLayer.clearLayers();
+      return;
+    }
     const members = d.members || [];
     const responses = d.responses || [];
     const quakeByPref = d.quakeByPref || {};
@@ -431,6 +448,11 @@
 
   // ---------- 起動・自動更新 ----------
   $("#refreshBtn").addEventListener("click", function(){ loadData(); loadQuake(); });
+  $("#toggleBtn").addEventListener("click", function(){
+    const collapsed = $("#panel").classList.toggle("collapsed");
+    this.textContent = collapsed ? "名簿を開く" : "地図を広く";
+    setTimeout(function(){ map.invalidateSize(); }, 60); // 地図の再描画
+  });
   loadGeo();              // 県境ポリゴンを一度だけ読み込み（地震取得後に色付け）
   loadData(); loadQuake();
   setInterval(loadData, REFRESH_MS);
