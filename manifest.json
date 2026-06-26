@@ -1,0 +1,15 @@
+{
+  "name": "安否確認マップ",
+  "short_name": "安否マップ",
+  "lang": "ja",
+  "description": "家族の安否を地図で共有し、地震時に報告できるアプリ",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0f172a",
+  "scope": "./",
+  "start_url": "map.html",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

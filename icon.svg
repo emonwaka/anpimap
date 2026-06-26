@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="安否確認マップ">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <path d="M256 104c-77 0-139 62-139 139 0 96 139 265 139 265s139-169 139-265c0-77-62-139-139-139z" fill="#ffffff"/>
+  <circle cx="256" cy="235" r="76" fill="#16a34a"/>
+  <path d="M223 235l24 26 50-58" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
