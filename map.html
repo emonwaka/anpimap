@@ -192,8 +192,9 @@
               let html = "<div class='pp-name'>"+esc(name)+"</div>";
               if(s){
                 html += "<div>最大"+scaleLabel(s)+"</div>";
-                // 震度4以上の地震ごとの内訳（同一時刻は統合済み・新しい順）
-                const evs = (curPrefEvents[name]||[]).slice()
+                // 震度4以上の地震ごとの内訳（時刻で1行・新しい順）
+                const bag = curPrefEvents[name] || {};
+                const evs = Object.keys(bag).map(function(t){ return { time:t, scale:bag[t] }; })
                   .sort(function(a,b){ return (parseQuakeTime(b.time)||0) - (parseQuakeTime(a.time)||0); });
                 if(evs.length){
                   html += "<div class='meta'>"+evs.map(function(e){
@@ -468,13 +469,16 @@
       return;
     }
 
-    // 3) 県ごとの最大（全イベント横断）＋寄与イベント（クリック内訳は震度4以上のみ・1イベント1行）
+    // 3) 県ごとの最大（全イベント横断）＋寄与イベント（震度4以上のみ・時刻で必ず1行に畳む）
     curPerPrefMax = {}; curPrefEvents = {};
     events.forEach(function(ev){
       Object.keys(ev.prefMax).forEach(function(pref){
         const s = ev.prefMax[pref];
         if(!(pref in curPerPrefMax) || s > curPerPrefMax[pref]) curPerPrefMax[pref] = s;
-        if(s >= DISPLAY_MIN_SCALE){ (curPrefEvents[pref] = curPrefEvents[pref] || []).push({ time: ev.time, scale: s }); }
+        if(s >= DISPLAY_MIN_SCALE){
+          const bag = curPrefEvents[pref] = curPrefEvents[pref] || {}; // { 時刻: 最大震度 } で時刻重複を排除
+          if(!(ev.time in bag) || s > bag[ev.time]) bag[ev.time] = s;
+        }
       });
     });
     if(prefLayer) prefLayer.setStyle(styleFeature);
