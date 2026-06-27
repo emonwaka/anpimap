@@ -1,14 +1,14 @@
 {
-  "name": "安否確認マップ",
-  "short_name": "安否マップ",
+  "name": "安否確認（報告）",
+  "short_name": "安否報告",
   "lang": "ja",
-  "description": "家族の安否を地図で共有し、地震時に報告できるアプリ",
+  "description": "地震時にワンタップで安否を報告し、地図で家族の状況を確認できるアプリ",
   "display": "standalone",
   "orientation": "portrait",
   "background_color": "#ffffff",
   "theme_color": "#0f172a",
   "scope": "./",
-  "start_url": "map.html",
+  "start_url": "report.html",
   "icons": [
     { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ]
