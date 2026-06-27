@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>安否確認マップ</title>
-<!-- ホーム画面アプリ化（PWA）：地図を初期画面として開く -->
+<title>安否を共有</title>
+<!-- ホーム画面アプリ（PWA）：地図アプリ内から報告フォームへ遷移しても同じアプリ内で開く -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#0f172a">
 <meta name="mobile-web-app-capable" content="yes">
@@ -12,604 +12,238 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="安否マップ">
 <link rel="apple-touch-icon" href="icon.svg">
-<!-- Googleログイン（地図の閲覧保護） -->
-<script src="https://accounts.google.com/gsi/client" async></script>
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
 <style>
   :root{
-    --safe:#16a34a; --minor:#d97706; --help:#dc2626; --none:#94a3b8;
-    --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#ffffff;
+    --safe:#16a34a; --safe-d:#15803d;
+    --minor:#d97706; --minor-d:#b45309;
+    --help:#dc2626; --help-d:#b91c1c;
+    --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --bg:#f1f5f9; --card:#ffffff;
   }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%}
+  html,body{margin:0;padding:0}
   body{
     font-family:-apple-system,BlinkMacSystemFont,"Hiragino Kaku Gothic ProN","Hiragino Sans","Yu Gothic","Noto Sans JP",Meiryo,sans-serif;
-    color:var(--ink); height:100dvh; display:flex; flex-direction:column;
+    background:var(--bg); color:var(--ink); line-height:1.6;
+    min-height:100dvh; display:flex; flex-direction:column; align-items:center;
+    padding:24px 16px calc(24px + env(safe-area-inset-bottom));
   }
-  /* レイアウト：モバイル=縦, 横幅広い時=パネル左 */
-  #app{display:flex; flex-direction:column; height:100%}
-  #map{flex:1 1 auto; min-height:42dvh}
-  #panel{
-    flex:0 0 auto; max-height:58dvh; overflow:auto; background:#fff;
-    border-top:1px solid var(--line); padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+  .wrap{width:100%; max-width:480px}
+  header{margin-bottom:18px}
+  .eyebrow{font-size:13px; letter-spacing:.08em; color:var(--muted); font-weight:700}
+  h1{font-size:26px; margin:2px 0 0; font-weight:800; letter-spacing:.01em}
+  .lead{color:var(--muted); margin-top:6px; font-size:15px}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; box-shadow:0 1px 2px rgba(15,23,42,.04)}
+
+  label.cmt{display:block; font-size:13px; color:var(--muted); font-weight:700; margin:2px 4px 6px}
+  textarea{
+    width:100%; border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+    font:inherit; font-size:15px; resize:vertical; min-height:52px; color:var(--ink); background:#fff;
   }
-  @media (min-width:820px){
-    #app{flex-direction:row}
-    #map{order:2; height:100%}
-    #panel{order:1; width:360px; max-height:none; height:100%; border-top:0; border-right:1px solid var(--line)}
+  textarea:focus{outline:3px solid #bfdbfe; border-color:#60a5fa}
+  select.pref{
+    width:100%; border:1px solid var(--line); border-radius:12px; padding:12px 14px;
+    font:inherit; font-size:16px; color:var(--ink); background:#fff; margin-bottom:14px;
   }
-  .ptop{display:flex; align-items:baseline; justify-content:space-between; gap:8px}
-  h1{font-size:19px; margin:0; font-weight:800}
-  .updated{font-size:12px; color:var(--muted)}
-  .refresh{margin-left:auto; background:#0f172a; color:#fff; border:0; border-radius:9px; padding:6px 10px; font:inherit; font-size:12px; font-weight:700; cursor:pointer}
-  .ptop-btns{display:flex; gap:6px; flex:0 0 auto}
-  .toggle{background:#fff; color:#0f172a; border:1px solid var(--line); border-radius:9px; padding:6px 10px; font:inherit; font-size:12px; font-weight:700; cursor:pointer}
-  .report-cta{display:block; margin-top:12px; background:#16a34a; color:#fff; text-decoration:none; text-align:center; padding:13px 16px; border-radius:12px; font-weight:800; font-size:15px}
-  .report-cta:hover{background:#15803d}
-  .report-cta:focus-visible{outline:4px solid #1e293b; outline-offset:2px}
-  /* 折りたたみ時：名簿・地震詳細・出典を隠し、地図を広げる（モバイルの縦並びのみ） */
-  #panel.collapsed .quake, #panel.collapsed .roster, #panel.collapsed .src{display:none}
-  @media (min-width:820px){ .toggle{display:none} }
+  select.pref:focus{outline:3px solid #bfdbfe; border-color:#60a5fa}
+  .hint{font-size:12px; color:var(--muted); margin:8px 4px 16px}
 
-  .quake{margin:12px 0 4px; border:1px solid #fed7aa; background:#fff7ed; border-radius:12px; padding:10px 12px; font-size:13px; color:#7c2d12; display:none}
-  .quake b{color:#9a3412}
-  .quake .areas{margin-top:6px; color:#9a3412; font-size:12px; line-height:1.5}
-  .quake .qrow{margin-top:5px; padding-top:5px; border-top:1px dashed #fed7aa; font-size:12px; color:#7c2d12}
-  .demo-note{background:#fee2e2; border:1px solid #fecaca; color:#991b1b; font-weight:800; border-radius:8px; padding:6px 10px; margin-bottom:8px; font-size:12px}
-  .shindo-legend{display:flex; flex-wrap:wrap; gap:6px 10px; margin-top:8px}
-  .shindo-legend .sl{display:flex; align-items:center; gap:4px; font-size:11px; color:#475569; font-weight:700}
-  .shindo-legend .slc{width:12px; height:12px; border-radius:3px; border:1px solid rgba(0,0,0,.15)}
+  .btns{display:flex; flex-direction:column; gap:12px}
+  button.status{
+    appearance:none; border:0; border-radius:14px; color:#fff; cursor:pointer;
+    padding:16px 18px; text-align:left; width:100%; display:flex; align-items:center; gap:14px;
+    min-height:72px; transition:transform .04s ease, filter .12s ease;
+  }
+  button.status:active{transform:scale(.985)}
+  button.status:focus-visible{outline:4px solid #1e293b; outline-offset:2px}
+  button.status:disabled{filter:grayscale(.4) opacity(.55); cursor:default}
+  .status .big{font-size:21px; font-weight:800; line-height:1.15}
+  .status .sub{font-size:13px; opacity:.92; font-weight:600}
+  .status .txt{display:flex; flex-direction:column}
+  .dot{width:14px; height:14px; border-radius:50%; background:#fff; flex:0 0 auto; box-shadow:0 0 0 4px rgba(255,255,255,.25)}
+  .b-safe{background:var(--safe)}  .b-safe:hover{background:var(--safe-d)}
+  .b-minor{background:var(--minor)} .b-minor:hover{background:var(--minor-d)}
+  .b-help{background:var(--help)}   .b-help:hover{background:var(--help-d)}
 
-  .summary{display:flex; gap:6px; margin:12px 0 10px; flex-wrap:wrap}
-  .pill{display:flex; align-items:center; gap:6px; border:1px solid var(--line); border-radius:999px; padding:5px 10px; font-size:12px; font-weight:700; background:#fff}
-  .pill .sw{width:9px;height:9px;border-radius:50%}
-  .sw-safe{background:var(--safe)} .sw-minor{background:var(--minor)} .sw-help{background:var(--help)} .sw-none{background:var(--none)}
+  .foot{margin-top:18px; font-size:12px; color:var(--muted); text-align:center}
 
-  ul.roster{list-style:none; margin:0; padding:0}
-  li.row{display:flex; align-items:center; gap:10px; padding:10px 4px; border-top:1px solid var(--line)}
-  li.row:first-child{border-top:0}
-  .badge{flex:0 0 auto; width:10px; height:10px; border-radius:50%}
-  .who{flex:1 1 auto; min-width:0}
-  .nm{font-weight:700; font-size:15px}
-  .rel{color:var(--muted); font-size:12px; font-weight:600}
-  .rebadge{display:inline-block; font-size:11px; font-weight:800; color:#9a3412; background:#ffedd5; border:1px solid #fed7aa; border-radius:999px; padding:1px 7px; margin-left:4px; vertical-align:middle}
-  .st{font-size:13px; font-weight:700}
-  .st.safe{color:var(--safe)} .st.minor{color:var(--minor)} .st.help{color:var(--help)} .st.none{color:var(--none)}
-  .meta{color:var(--muted); font-size:12px}
-  .acc{display:inline-block; font-size:10px; font-weight:700; border-radius:6px; padding:0 5px; margin-left:2px; vertical-align:middle}
-  .acc-detail{color:#166534; background:#dcfce7; border:1px solid #bbf7d0}
-  .acc-rough{color:#475569; background:#f1f5f9; border:1px solid #e2e8f0}
-  .cmt{color:#334155; font-size:12px; margin-top:2px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-  .right{flex:0 0 auto; text-align:right}
-  .loading{color:var(--muted); font-size:13px; padding:14px 4px}
-  .src{margin-top:14px; padding-top:10px; border-top:1px solid var(--line); color:var(--muted); font-size:11px; line-height:1.6}
-  .src a{color:#2563eb} .src code{background:#f1f5f9; border-radius:4px; padding:0 4px; font-size:10px}
-
-  .epi{color:#dc2626; font-size:22px; font-weight:900; line-height:24px; text-align:center; text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff}
-  /* ログインゲート */
-  #authgate{position:fixed; inset:0; z-index:9999; background:#0f172a; color:#fff; display:flex; align-items:center; justify-content:center; padding:24px}
-  .authbox{max-width:340px; width:100%; text-align:center}
-  .authtitle{font-size:22px; font-weight:800; margin-bottom:8px}
-  .authmsg{font-size:14px; color:#cbd5e1; line-height:1.7; margin-bottom:20px}
-  #gbtn{display:flex; justify-content:center; min-height:44px}
-  .authsub{margin-top:16px; font-size:12px; color:#94a3b8}
-  .authsub a{color:#93c5fd; cursor:pointer; text-decoration:underline}
-  .leaflet-popup-content{font-size:13px; line-height:1.5}
-  .pp-name{font-weight:800; font-size:14px}
-  .pp-st{font-weight:700}
+  /* 状態表示 */
+  .sending,.done,.noid{display:none}
+  .center{text-align:center; padding:14px 6px}
+  .spinner{width:34px;height:34px;border-radius:50%;border:4px solid var(--line);border-top-color:#2563eb;margin:6px auto 12px;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  @media (prefers-reduced-motion: reduce){ .spinner{animation:none} button.status{transition:none} }
+  .check{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:4px auto 12px;font-size:34px;color:#fff;font-weight:800}
+  .resultline{font-size:20px; font-weight:800; margin:2px 0}
+  .resultsub{color:var(--muted); font-size:14px; margin-top:6px}
+  .doneacts{display:flex; flex-direction:column; gap:10px; align-items:stretch; margin-top:18px}
+  .tomap{display:block; background:#2563eb; color:#fff; text-decoration:none; padding:14px 20px; border-radius:12px; font-weight:800; font:inherit; text-align:center}
+  .tomap:hover{background:#1d4ed8}
+  .tomap:focus-visible{outline:4px solid #1e293b; outline-offset:2px}
+  .again{display:block; background:#eef2f7; color:#0f172a; text-decoration:none; padding:12px 20px; border-radius:12px; font-weight:700; border:1px solid var(--line); font:inherit; cursor:pointer; text-align:center}
+  .again:hover{background:#e2e8f0}
+  .again:focus-visible{outline:4px solid #1e293b; outline-offset:2px}
+  .warn{background:#fff7ed; border:1px solid #fed7aa; color:#9a3412; border-radius:12px; padding:12px 14px; font-size:14px}
 </style>
 </head>
 <body>
-<!-- ログインゲート：許可された家族のGoogleアカウントのみ地図を閲覧可 -->
-<div id="authgate">
-  <div class="authbox">
-    <div class="authtitle">安否確認マップ</div>
-    <div class="authmsg" id="authmsg">家族専用です。<br>Googleアカウントでログインしてください。</div>
-    <div id="gbtn"></div>
-    <div class="authsub" id="authsub"></div>
-  </div>
-</div>
-<div id="app">
-  <div id="panel">
-    <div class="ptop">
-      <div>
-        <h1>安否確認マップ</h1>
-        <div class="updated" id="updated">読み込み中…</div>
-      </div>
-      <div class="ptop-btns">
-        <button class="toggle" id="toggleBtn" type="button">地図を広く</button>
-        <button class="refresh" id="refreshBtn">更新</button>
-      </div>
-    </div>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">家族の安否確認</div>
+    <h1 id="greet">状況を共有</h1>
+    <div class="lead" id="lead">ボタンを1つ押すと、今いる都道府県と状況が家族に届きます。</div>
+  </header>
 
-    <a class="report-cta" id="reportBtn" href="report.html">✏️ 自分の状況を報告する</a>
-
-    <div class="quake" id="quakeBox"></div>
-
-    <div class="summary" id="summary"></div>
-
-    <ul class="roster" id="roster"><li class="loading">メンバー情報を読み込んでいます…</li></ul>
-
-    <div class="src">
-      震源・震度データ：<a href="https://www.p2pquake.net/develop/json_api_v2/" target="_blank" rel="noopener">P2P地震情報 API</a>
-      （<code>api.p2pquake.net/v2/jma/quake?min_scale=40</code>）<br>
-      地図：地理院タイル（国土地理院）／ 震度色は気象庁配色に準拠した目安
+  <!-- 入力 -->
+  <div class="card" id="formCard">
+    <label class="cmt" for="pref">今いる都道府県</label>
+    <select id="pref" class="pref" aria-label="今いる都道府県"></select>
+    <label class="cmt" for="comment">ひとこと（任意・なくてもOK）</label>
+    <textarea id="comment" placeholder="例）家族みんな無事です／○○へ避難中"></textarea>
+    <div class="hint">「無事です」は選んだ都道府県で共有します。「軽いケガ」「助けが必要」を選んだときだけ、家族が居場所を特定できるよう現在地の共有を確認します。</div>
+    <div class="btns">
+      <button class="status b-safe"  data-status="safe">
+        <span class="dot"></span><span class="txt"><span class="big">無事です</span><span class="sub">ケガはありません</span></span>
+      </button>
+      <button class="status b-minor" data-status="minor">
+        <span class="dot"></span><span class="txt"><span class="big">軽いケガ</span><span class="sub">手当てできる範囲です</span></span>
+      </button>
+      <button class="status b-help"  data-status="help">
+        <span class="dot"></span><span class="txt"><span class="big">助けが必要</span><span class="sub">支援・救助を求めています</span></span>
+      </button>
     </div>
   </div>
-  <div id="map"></div>
+
+  <!-- 送信中 -->
+  <div class="card sending" id="sendingCard">
+    <div class="center">
+      <div class="spinner"></div>
+      <div class="resultline">送信しています…</div>
+      <div class="resultsub" id="sendingSub">今いる都道府県を確認しています</div>
+    </div>
+  </div>
+
+  <!-- 完了 -->
+  <div class="card done" id="doneCard">
+    <div class="center">
+      <div class="check" id="doneCheck">✓</div>
+      <div class="resultline" id="doneLine">送信しました</div>
+      <div class="resultsub" id="doneSub"></div>
+      <div class="doneacts">
+        <a class="tomap" id="toMapBtn" href="map.html">地図でみんなの状況を見る</a>
+        <button class="again" id="againBtn">状況を更新する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- id が無いとき -->
+  <div class="card noid" id="noidCard">
+    <div class="warn">このページは家族から共有された<strong>専用リンク</strong>から開いてください。リンクが正しくないか、コピーが途中で切れている可能性があります。</div>
+  </div>
+
+  <div class="foot">このリンクはあなた専用です</div>
 </div>
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 <script>
-  // ====== 設定 ======
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbyjK5PyxE2R00luPVqvydlwvoNUnh0mONI6KEnHqhrhqNdgrmny7gJx6N1wR-SL0GoJvQ/exec"; // ← report.html と同じ URL
-  const GOOGLE_CLIENT_ID = "47785614024-irlttcrhjtakvf898pqgo287r6o6fn5b.apps.googleusercontent.com"; // ← Code.gs の OAUTH_CLIENT_ID と同じ値
-  const DEFAULT_CENTER = [38.5, 138.5]; // 初期表示の中心（本州中央あたり）
-  const DEFAULT_ZOOM   = 5;
-  const REFRESH_MS = 30000;  // 安否データの更新間隔
-  const QUAKE_MS   = 60000;  // 地震情報の更新間隔
-  const WINDOW_HOURS_DEFAULT = 48;       // doGet が値を返さない場合の既定の表示時間窓（時間）
-  const DISPLAY_MIN_SCALE = 40;          // 地図に表示する地震の最小震度（40=震度4）
-  const QUAKE_SHOW_HOURS  = 48;          // この時間内に発生した地震だけ表示（複数件まとめて表示）
-  // ==================
+  // ====== 設定：デプロイした Apps Script ウェブアプリの URL に変更 ======
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbyjK5PyxE2R00luPVqvydlwvoNUnh0mONI6KEnHqhrhqNdgrmny7gJx6N1wR-SL0GoJvQ/exec";
+  // ====================================================================
 
-  // 都道府県の代表点（県庁所在地・近似）。ピンはこの座標に置く。
-  const PREF_CENTROID = {
-    "北海道":[43.06,141.35],"青森県":[40.82,140.74],"岩手県":[39.70,141.15],
-    "宮城県":[38.27,140.87],"秋田県":[39.72,140.10],"山形県":[38.24,140.36],
-    "福島県":[37.75,140.47],"茨城県":[36.34,140.45],"栃木県":[36.57,139.88],
-    "群馬県":[36.39,139.06],"埼玉県":[35.86,139.65],"千葉県":[35.61,140.12],
-    "東京都":[35.69,139.69],"神奈川県":[35.45,139.64],"新潟県":[37.90,139.02],
-    "富山県":[36.70,137.21],"石川県":[36.59,136.63],"福井県":[36.07,136.22],
-    "山梨県":[35.66,138.57],"長野県":[36.65,138.18],"岐阜県":[35.39,136.72],
-    "静岡県":[34.98,138.38],"愛知県":[35.18,136.91],"三重県":[34.73,136.51],
-    "滋賀県":[35.00,135.87],"京都府":[35.02,135.76],"大阪府":[34.69,135.52],
-    "兵庫県":[34.69,135.18],"奈良県":[34.69,135.83],"和歌山県":[34.23,135.17],
-    "鳥取県":[35.50,134.24],"島根県":[35.47,133.05],"岡山県":[34.66,133.93],
-    "広島県":[34.40,132.46],"山口県":[34.19,131.47],"徳島県":[34.07,134.56],
-    "香川県":[34.34,134.04],"愛媛県":[33.84,132.77],"高知県":[33.56,133.53],
-    "福岡県":[33.61,130.42],"佐賀県":[33.25,130.30],"長崎県":[32.74,129.87],
-    "熊本県":[32.79,130.74],"大分県":[33.24,131.61],"宮崎県":[31.91,131.42],
-    "鹿児島県":[31.56,130.56],"沖縄県":[26.21,127.68]
-  };
+  const STATUS_JP = { safe:"無事です", minor:"軽いケガ", help:"助けが必要" };
+  const STATUS_COLOR = { safe:"#16a34a", minor:"#d97706", help:"#dc2626" };
 
-  const STATUS = {
-    safe:  { jp:"無事",   color:"#16a34a", cls:"safe",  pri:3 },
-    minor: { jp:"軽傷",   color:"#d97706", cls:"minor", pri:1 },
-    help:  { jp:"要支援", color:"#dc2626", cls:"help",  pri:0 }
-  };
-  const NONE = { jp:"未回答", color:"#94a3b8", cls:"none", pri:2 };
-  // 閲覧者の専用id（自分とグループが重なる人だけ表示される）。report.html の「地図で見る」から付与。
-  // ホーム画面アプリで id 無しで起動された場合に備え、一度開いた id を localStorage に記憶。
-  const VIEWER_ID = (function(){
-    const u = (new URLSearchParams(location.search).get("id") || "").trim();
-    try {
-      if(u){ localStorage.setItem("anpi_id", u); return u; }
-      return (localStorage.getItem("anpi_id") || "").trim();
-    } catch(e){ return u; }
-  })();
-  const SCALE = {10:"1",20:"2",30:"3",40:"4",45:"5弱",50:"5強",55:"6弱",60:"6強",70:"7"};
-  // 震度カラー（JMA配色に近い目安）。県ごとの色分けに使用。
-  const SHINDO_COLOR = {10:"#C7CCD1",20:"#7AB8F5",30:"#69C2A3",40:"#F0E150",45:"#F5A742",50:"#F07B26",55:"#E14B3B",60:"#C0203A",70:"#8B1A8B"};
-  function shindoColor(s){ return SHINDO_COLOR[s] || "#C7CCD1"; }
-  function shindoRadius(s){ return ({10:8,20:10,30:12,40:15,45:18,50:21,55:24,60:27,70:30})[s] || 8; }
+  const PREF_LIST = ["北海道","青森県","岩手県","宮城県","秋田県","山形県","福島県","茨城県","栃木県","群馬県","埼玉県","千葉県","東京都","神奈川県","新潟県","富山県","石川県","福井県","山梨県","長野県","岐阜県","静岡県","愛知県","三重県","滋賀県","京都府","大阪府","兵庫県","奈良県","和歌山県","鳥取県","島根県","岡山県","広島県","山口県","徳島県","香川県","愛媛県","高知県","福岡県","佐賀県","長崎県","熊本県","大分県","宮崎県","鹿児島県","沖縄県"];
+
+  const params = new URLSearchParams(location.search);
+  const id = (params.get("id") || "").trim();
+
   const $ = (s)=>document.querySelector(s);
 
-  const map = L.map("map", { zoomControl:true }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
-  L.tileLayer("https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png", {
-    maxZoom: 18,
-    attribution: "地理院タイル（国土地理院）"
-  }).addTo(map);
-
-  // 震度の色分けは利用者ピンより下層に置く（ピンが隠れないように）
-  map.createPane("quakeFill");
-  map.getPane("quakeFill").style.zIndex = 350; // tile(200) < quakeFill(350) < overlay/ピン(400)
-
-  const pinLayer   = L.layerGroup().addTo(map);
-  const quakeLayer = L.layerGroup().addTo(map);
-
-  // ---- 都道府県ポリゴンの震度色分け（japan.geojson をリポジトリに配置）----
-  let prefLayer = null;       // 県境ポリゴンのレイヤ
-  let curPerPrefMax = {};     // 表示中の全地震を横断した県別最大震度 { 県名: scale }
-  let curPrefEvents = {};     // 県ごとの寄与イベント { 県名: [{time, scale}] }（クリック時の内訳用）
-  function prefNameOf(f){ const p = f.properties || {}; return p.nam_ja || p.name || p.N03_001 || ""; }
-  function styleFeature(f){
-    const s = curPerPrefMax[prefNameOf(f)];
-    return s ? { color:"#ffffff", weight:1, opacity:0.8, fillColor:shindoColor(s), fillOpacity:0.55 }
-             : { weight:0, opacity:0, fillOpacity:0 };
+  // 都道府県プルダウンを生成
+  (function fillPref(){
+    const sel = $("#pref");
+    PREF_LIST.forEach(function(p){
+      const o = document.createElement("option");
+      o.value = p; o.textContent = p; sel.appendChild(o);
+    });
+  })();
+  function show(which){
+    ["formCard","sendingCard","doneCard","noidCard"].forEach(function(c){
+      const el = document.getElementById(c);
+      el.style.display = (c === which) ? "block" : "none";
+    });
   }
-  function loadGeo(){
-    fetch("./japan.geojson")
-      .then(function(r){ if(!r.ok) throw new Error("not found"); return r.json(); })
-      .then(function(geo){
-        prefLayer = L.geoJSON(geo, {
-          pane:"quakeFill", style: styleFeature,
-          onEachFeature: function(f, layer){
-            layer.on("click", function(){
-              const name = prefNameOf(f), s = curPerPrefMax[name];
-              let html = "<div class='pp-name'>"+esc(name)+"</div>";
-              if(s){
-                html += "<div>最大"+scaleLabel(s)+"</div>";
-                // 震度4以上の地震ごとの内訳（時刻で1行・新しい順）
-                const bag = curPrefEvents[name] || {};
-                const evs = Object.keys(bag).map(function(t){ return { time:t, scale:bag[t] }; })
-                  .sort(function(a,b){ return (parseQuakeTime(b.time)||0) - (parseQuakeTime(a.time)||0); });
-                if(evs.length){
-                  html += "<div class='meta'>"+evs.map(function(e){
-                    return esc(e.time)+"："+scaleLabel(e.scale);
-                  }).join("<br>")+"</div>";
-                }
-              } else {
-                html += "<div>観測なし</div>";
-              }
-              layer.bindPopup(html).openPopup();
-            });
-          }
-        }).addTo(map);
-        if(Object.keys(curPerPrefMax).length) prefLayer.setStyle(styleFeature); // 既に地震取得済みなら塗る
+
+  if(!id){
+    show("noidCard");
+  } else {
+    show("formCard");
+    try { localStorage.setItem("anpi_id", id); } catch(e){} // ホーム画面アプリが id を記憶
+    // 地図は自分専用リンク（自分とグループが重なる人だけ表示される）
+    $("#toMapBtn").href = "map.html?id=" + encodeURIComponent(id);
+    // 名前で呼びかけ＆登録県をプルダウンの初期値に（取れなくてもボタンは使える）
+    fetch(GAS_URL + "?type=member&id=" + encodeURIComponent(id))
+      .then(function(r){return r.json();})
+      .then(function(d){
+        if(d && d.ok){
+          if(d.name) $("#greet").textContent = d.name + "さん、状況を教えてください";
+          if(d.pref && PREF_LIST.indexOf(d.pref) >= 0) $("#pref").value = d.pref;
+        }
+      }).catch(function(){});
+    // ボタン
+    document.querySelectorAll("button.status").forEach(function(b){
+      b.addEventListener("click", function(){ submit(b.getAttribute("data-status")); });
+    });
+    $("#againBtn").addEventListener("click", function(){ show("formCard"); });
+  }
+
+  function submit(status){
+    document.querySelectorAll("button.status").forEach(function(b){ b.disabled = true; });
+    const comment = $("#comment").value.trim();
+    const pref = $("#pref").value;
+    show("sendingCard");
+
+    if(status === "safe"){
+      // 無事：GPSは使わず、選んだ都道府県で共有
+      $("#sendingSub").textContent = pref + "として共有しています";
+      send(status, comment, pref, null, null);
+      return;
+    }
+
+    // 軽傷／要支援：家族が居場所を特定できるよう、このときだけ現在地を確認
+    $("#sendingSub").textContent = "現在地を確認しています（家族に居場所を伝えます）";
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        function(pos){ send(status, comment, pref, pos.coords.latitude, pos.coords.longitude); },
+        function(){ $("#sendingSub").textContent = "現在地が取れないため " + pref + " として共有します"; send(status, comment, pref, null, null); },
+        { enableHighAccuracy:true, timeout:10000, maximumAge:0 }
+      );
+    } else {
+      send(status, comment, pref, null, null);
+    }
+  }
+
+  function send(status, comment, pref, lat, lng){
+    const payload = { id:id, status:status, comment:comment, pref:pref, lat:lat, lng:lng };
+    // Content-Type を付けない＝text/plain 扱いになり CORS プリフライトを回避できる
+    fetch(GAS_URL, { method:"POST", body: JSON.stringify(payload) })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if(d && d.ok){ done(d.name, status, d.pref, d.precise); }
+        else { done(null, status, pref, false); }
       })
-      .catch(function(){ console.warn("japan.geojson が読み込めません。リポジトリに配置すると県の色分けが有効になります。"); });
+      .catch(function(){ done(null, status, pref, false); });
   }
 
-  function scaleLabel(s){ return "震度" + (SCALE[s] || "不明"); }
-  function relTime(iso){
-    if(!iso) return "";
-    const t = new Date(iso).getTime();
-    if(isNaN(t)) return "";
-    const min = Math.floor((Date.now()-t)/60000);
-    if(min < 1) return "たった今";
-    if(min < 60) return min + "分前";
-    const h = Math.floor(min/60);
-    if(h < 24) return h + "時間前";
-    return Math.floor(h/24) + "日前";
+  function done(name, status, pref, precise){
+    const color = STATUS_COLOR[status] || "#16a34a";
+    $("#doneCheck").style.background = color;
+    $("#doneLine").textContent = (name ? name + "さん：" : "") + "「" + (STATUS_JP[status]||"") + "」を共有しました";
+    $("#doneSub").textContent = precise
+      ? "現在地つきで家族に共有しました。みんなの状況は下の地図で確認できます。"
+      : ((pref ? pref + "として" : "") + "家族に共有しました。みんなの状況は下の地図で確認できます。");
+    document.querySelectorAll("button.status").forEach(function(b){ b.disabled = false; });
+    show("doneCard");
   }
-
-  // ---------- 安否データ ----------
-  function loadData(){
-    if(!ID_TOKEN){ showGate(); return; } // 未ログインなら取得しない
-    fetch(GAS_URL + "?type=data&token=" + encodeURIComponent(ID_TOKEN))
-      .then(function(r){ return r.json(); })
-      .then(render)
-      .catch(function(){ $("#updated").textContent = "更新に失敗しました（再試行します）"; });
-  }
-
-  function render(d){
-    if(!d || !d.ok){ $("#updated").textContent = "データを取得できませんでした"; return; }
-    if(d.needAuth){
-      // トークン期限切れ等：再ログインを促す（One Tap で無音再取得を試みる）
-      ID_TOKEN = "";
-      showGate("セッションの有効期限が切れました。<br>もう一度ログインしてください。");
-      try { if(window.google) google.accounts.id.prompt(); } catch(e){}
-      return;
-    }
-    if(d.forbidden){
-      showGate("このGoogleアカウント" + (d.email ? "（" + d.email + "）" : "") +
-        "は閲覧を許可されていません。<br>管理者に連絡してください。", true);
-      return;
-    }
-    hideGate();
-    // 報告フォームへのリンクをログイン中の本人に合わせる
-    if(d.viewerId){
-      $("#reportBtn").href = "report.html?id=" + encodeURIComponent(d.viewerId);
-      try { localStorage.setItem("anpi_id", d.viewerId); } catch(e){}
-    }
-    const members = d.members || [];
-    const responses = d.responses || [];
-    const quakeByPref = d.quakeByPref || {};
-
-    // 表示時間窓（固定）＋手動リセットを反映した「これより新しい回答だけ有効」の基準時刻
-    const windowHours = (typeof d.windowHours === "number") ? d.windowHours : WINDOW_HOURS_DEFAULT;
-    const cutoffMs = Date.now() - windowHours * 3600 * 1000;
-    let effCutoffMs = cutoffMs;
-    if(d.boardResetAt){
-      const br = new Date(d.boardResetAt).getTime();
-      if(!isNaN(br)) effCutoffMs = Math.max(effCutoffMs, br);
-    }
-
-    // id ごとに最新の回答を取る
-    const latest = {};
-    responses.forEach(function(r){
-      const cur = latest[r.id];
-      if(!cur || new Date(r.time) > new Date(cur.time)) latest[r.id] = r;
-    });
-
-    // 各メンバーの状態を確定（valid=時間窓内の回答があるか / pinPref=ピンを置く県 / 要再報告判定）
-    const view = members.map(function(m){
-      const r = latest[m.id];
-      const valid = !!(r && new Date(r.time).getTime() >= effCutoffMs);
-      const info = valid ? (STATUS[r.status] || NONE) : NONE;
-      const pinPref = (valid && r.pref && PREF_CENTROID[r.pref]) ? r.pref : m.pref;
-      // 軽傷／要支援でGPS共有があれば、精密な現在地を直接ピンにする
-      const coords = (valid && typeof r.lat === "number" && typeof r.lng === "number") ? [r.lat, r.lng] : null;
-      // 『要再報告』：登録県に時間窓内の対象地震があり、その地震より後の回答が無い
-      const q = quakeByPref[m.pref];
-      let needReport = false;
-      if(q && q.time){
-        const qt = new Date(q.time).getTime();
-        if(!isNaN(qt) && qt >= cutoffMs){
-          needReport = !valid || (r && new Date(r.time).getTime() < qt);
-        }
-      }
-      return { m:m, r:valid ? r : null, info:info, pinPref:pinPref, coords:coords, needReport:needReport };
-    });
-
-    // ピン描画：
-    //   精密(GPS共有)    … くっきりした点「現在地」
-    //   大まか(県レベル回答) … 薄い大きな円＋中央の点「県内のどこか」
-    //   未回答           … 小さめの控えめな点
-    pinLayer.clearLayers();
-    const bounds = [];
-
-    function addPin(x){
-      const info = x.info, r = x.r;
-      const precise = !!x.coords;
-      const pos = precise ? x.coords : x._pos;
-      const accuracy = precise
-        ? "📍現在地〔詳細〕"
-        : (r ? esc(x.pinPref) + "・県内のどこか〔大まか〕" : "未回答");
-      const popup =
-        "<div class='pp-name'>"+esc(x.m.name)+(x.m.relation?" <span style='color:#64748b'>("+esc(x.m.relation)+")</span>":"")+"</div>"+
-        "<div class='pp-st' style='color:"+info.color+"'>"+info.jp+"</div>"+
-        "<div class='meta'>"+accuracy+(r?"　"+relTime(r.time):"")+"</div>"+
-        (x.needReport?"<div class='meta' style='color:#b45309'>※対象地震あり・要再報告</div>":"")+
-        (r&&r.comment?"<div>"+esc(r.comment)+"</div>":"");
-
-      // 大まかな位置は「この辺り」を薄い面で表現（実際よりピンポイントに見せない）
-      if(!precise && r){
-        L.circle(pos, { radius:35000, color:info.color, weight:1, opacity:0.5, fillColor:info.color, fillOpacity:0.12 })
-          .bindPopup(popup).addTo(pinLayer);
-      }
-      const dot = L.circleMarker(pos, {
-        radius: precise ? 10 : (r ? 7 : 6),
-        color:"#fff", weight:2, fillColor:info.color, fillOpacity:(precise||r) ? 1 : 0.85
-      });
-      dot.bindPopup(popup).addTo(pinLayer);
-      bounds.push(pos);
-    }
-
-    const byPref = {};
-    view.forEach(function(x){
-      if(x.coords){ addPin(x); }   // 精密はそのまま
-      else { (byPref[x.pinPref] = byPref[x.pinPref] || []).push(x); }
-    });
-    Object.keys(byPref).forEach(function(pref){
-      const base = PREF_CENTROID[pref];
-      if(!base) return;
-      const group = byPref[pref];
-      group.forEach(function(x, i){ x._pos = offsetPos(base, i, group.length); addPin(x); });
-    });
-
-    // 集計
-    const count = { safe:0, minor:0, help:0, none:0 };
-    view.forEach(function(x){ count[x.info.cls]++; });
-    $("#summary").innerHTML =
-      pill("safe","無事",count.safe)+pill("help","要支援",count.help)+
-      pill("minor","軽傷",count.minor)+pill("none","未回答",count.none);
-
-    // 名簿（要支援→軽傷→未回答→無事。さらに要再報告を未回答内で優先）
-    const rows = view.slice().sort(function(a,b){
-      if(a.info.pri !== b.info.pri) return a.info.pri - b.info.pri;
-      if(a.needReport !== b.needReport) return a.needReport ? -1 : 1;
-      const ta = a.r ? new Date(a.r.time).getTime() : 0;
-      const tb = b.r ? new Date(b.r.time).getTime() : 0;
-      return tb - ta;
-    });
-
-    $("#roster").innerHTML = rows.map(function(x){
-      const r = x.r, info = x.info;
-      const precise = !!x.coords;
-      // 位置と精度ラベル
-      let loc;
-      if(precise)      loc = "📍現在地 <span class='acc acc-detail'>詳細</span>";
-      else if(r)       loc = esc(x.pinPref) + " <span class='acc acc-rough'>県内</span>";
-      else             loc = "—";
-      return "<li class='row'>"+
-        "<span class='badge' style='background:"+info.color+"'></span>"+
-        "<span class='who'>"+
-          "<span class='nm'>"+esc(x.m.name)+"</span>"+(x.m.relation?" <span class='rel'>"+esc(x.m.relation)+"</span>":"")+
-          (x.needReport?" <span class='rebadge'>要再報告</span>":"")+
-          (r&&r.comment?"<div class='cmt'>"+esc(r.comment)+"</div>":"")+
-        "</span>"+
-        "<span class='right'>"+
-          "<div class='st "+info.cls+"'>"+info.jp+"</div>"+
-          "<div class='meta'>"+loc+(r?"・"+relTime(r.time):"")+"</div>"+
-        "</span>"+
-      "</li>";
-    }).join("");
-
-    if(bounds.length){ map.fitBounds(bounds, { padding:[40,40], maxZoom:9 }); }
-    const now = new Date();
-    $("#updated").textContent = "最終更新 " + now.toLocaleTimeString("ja-JP");
-  }
-
-  // 県重心まわりに決定的な微小オフセットを与える（同一県の複数ピンの重なり回避）
-  function offsetPos(base, i, total){
-    if(total <= 1) return [base[0], base[1]];
-    const R = 0.08; // 度（約9km）。県内に収まる程度の小さな円周上に配置
-    const ang = (2 * Math.PI * i) / total;
-    return [base[0] + R * Math.cos(ang), base[1] + R * Math.sin(ang)];
-  }
-
-  function pill(cls,label,n){
-    return "<span class='pill'><span class='sw sw-"+cls+"'></span>"+label+" "+n+"</span>";
-  }
-  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){
-    return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c];
-  }); }
-
-  // ---------- 地震情報（P2P地震情報 API・ブラウザから直接取得） ----------
-  // デモ：map.html?demo=1 でダミー地震を表示し、県の色分けを確認できる（実データは取得しない）
-  const DEMO_QUAKE = new URLSearchParams(location.search).get("demo") === "1";
-  const DEMO_DATA = [{
-    id:"demo",
-    earthquake:{
-      time:"テスト表示", maxScale:70,
-      hypocenter:{ name:"宮城県沖（デモ）", latitude:38.1, longitude:142.0, depth:50, magnitude:7.0 }
-    },
-    points:[
-      {pref:"宮城県",addr:"宮城県栗原市",scale:70,isArea:false},
-      {pref:"福島県",addr:"福島県福島市",scale:60,isArea:false},
-      {pref:"岩手県",addr:"岩手県盛岡市",scale:55,isArea:false},
-      {pref:"山形県",addr:"山形県山形市",scale:50,isArea:false},
-      {pref:"秋田県",addr:"秋田県秋田市",scale:45,isArea:false},
-      {pref:"青森県",addr:"青森県青森市",scale:40,isArea:false},
-      {pref:"茨城県",addr:"茨城県水戸市",scale:30,isArea:false},
-      {pref:"栃木県",addr:"栃木県宇都宮市",scale:20,isArea:false},
-      {pref:"新潟県",addr:"新潟県新潟市",scale:20,isArea:false},
-      {pref:"群馬県",addr:"群馬県前橋市",scale:10,isArea:false},
-      {pref:"東京都",addr:"東京都千代田区",scale:10,isArea:false}
-    ]
-  }];
-
-  function loadQuake(){
-    if(DEMO_QUAKE){ renderQuakes(DEMO_DATA, true); return; }
-    // 震度4以上(min_scale)の地震だけを新しい順(order=-1)に直近100件取得（小さな地震で押し出されない）
-    fetch("https://api.p2pquake.net/v2/jma/quake?min_scale=" + DISPLAY_MIN_SCALE + "&limit=100&order=-1")
-      .then(function(r){ return r.json(); })
-      .then(function(data){ renderQuakes(data, false); })
-      .catch(function(){ /* 取得失敗時は何もしない */ });
-  }
-
-  // P2Pの発生時刻文字列（"YYYY/MM/DD HH:MM:SS"・JST）→ ミリ秒。失敗時 null。
-  function parseQuakeTime(s){ const t = new Date(String(s||"").replace(/-/g,"/")).getTime(); return isNaN(t) ? null : t; }
-  function depthText(h){ const d = h.depth; return (d>0) ? "深さ約"+d+"km" : (d===0 ? "ごく浅い" : ""); }
-
-  function renderQuakes(data, isDemo){
-    quakeLayer.clearLayers();
-    const box = $("#quakeBox");
-    const legend = "<div class='shindo-legend'>" +
-      [10,20,30,40,45,50,55,60,70].map(function(s){
-        return "<span class='sl'><span class='slc' style='background:"+shindoColor(s)+"'></span>"+SCALE[s]+"</span>";
-      }).join("") + "</div>";
-
-    // 1) 48時間以内＆震度4+ の生イベントを抽出（取得は既に震度4+のみ）
-    const cutoff = Date.now() - QUAKE_SHOW_HOURS*3600*1000;
-    const raw = (data||[]).filter(function(q){
-      const eq = q.earthquake||{};
-      if(isDemo) return true;
-      if(!(eq.maxScale >= DISPLAY_MIN_SCALE)) return false;
-      const t = parseQuakeTime(eq.time);
-      return t !== null && t >= cutoff;
-    });
-
-    // 2) 同一発生時刻のもの（速報＋詳細、同一県の複数観測点）を1件に統合し、県ごとの最大震度にまとめる
-    const byTime = {};
-    raw.forEach(function(q){
-      const eq = q.earthquake||{};
-      const key = eq.time || ("id:" + (q.id||Math.random()));
-      let m = byTime[key];
-      if(!m){ m = byTime[key] = { time: eq.time||"", hypo: eq.hypocenter||{}, maxScale: eq.maxScale||0, prefMax: {}, pc: -1 }; }
-      const pc = (q.points||[]).length;
-      if(pc > m.pc){ m.pc = pc; m.hypo = eq.hypocenter || m.hypo; } // points が多い＝詳細を代表に
-      if((eq.maxScale||0) > m.maxScale) m.maxScale = eq.maxScale;
-      (q.points||[]).forEach(function(p){
-        if(!p.pref || typeof p.scale !== "number") return;
-        if(!(p.pref in m.prefMax) || p.scale > m.prefMax[p.pref]) m.prefMax[p.pref] = p.scale; // 県ごと最大
-      });
-    });
-    const events = Object.keys(byTime).map(function(k){ return byTime[k]; })
-      .sort(function(a,b){ return (parseQuakeTime(b.time)||0) - (parseQuakeTime(a.time)||0); });
-
-    // 該当なし：色を消し、安心メッセージ
-    if(!events.length){
-      curPerPrefMax = {}; curPrefEvents = {};
-      if(prefLayer) prefLayer.setStyle(styleFeature);
-      box.style.display = "block";
-      box.innerHTML = "<b>地震情報</b><br>最近"+QUAKE_SHOW_HOURS+"時間に震度"+SCALE[DISPLAY_MIN_SCALE]+"以上の地震はありません。";
-      return;
-    }
-
-    // 3) 県ごとの最大（全イベント横断）＋寄与イベント（震度4以上のみ・時刻で必ず1行に畳む）
-    curPerPrefMax = {}; curPrefEvents = {};
-    events.forEach(function(ev){
-      Object.keys(ev.prefMax).forEach(function(pref){
-        const s = ev.prefMax[pref];
-        if(!(pref in curPerPrefMax) || s > curPerPrefMax[pref]) curPerPrefMax[pref] = s;
-        if(s >= DISPLAY_MIN_SCALE){
-          const bag = curPrefEvents[pref] = curPrefEvents[pref] || {}; // { 時刻: 最大震度 } で時刻重複を排除
-          if(!(ev.time in bag) || s > bag[ev.time]) bag[ev.time] = s;
-        }
-      });
-    });
-    if(prefLayer) prefLayer.setStyle(styleFeature);
-
-    // 4) バナー：イベント一覧（新しい順・最大8件）
-    const shown = events.slice(0,8);
-    const rows = shown.map(function(ev){
-      const h = ev.hypo||{}, dt = depthText(h);
-      return "<div class='qrow'>"+esc(ev.time)+"　<b>"+esc(h.name||"不明")+"</b>"+
-        (h.magnitude?"（M"+esc(h.magnitude)+"）":"")+(dt?"　"+esc(dt):"")+"　最大<b>"+scaleLabel(ev.maxScale)+"</b></div>";
-    }).join("");
-    box.style.display = "block";
-    box.innerHTML = (isDemo ? "<div class='demo-note'>⚠ これはテスト表示です（実際の地震ではありません）</div>" : "")+
-      "<b>直近"+QUAKE_SHOW_HOURS+"時間の地震（震度"+SCALE[DISPLAY_MIN_SCALE]+"以上）"+events.length+"件</b>"+
-      rows + (events.length>shown.length ? "<div class='qrow'>…ほか"+(events.length-shown.length)+"件</div>" : "")+
-      legend;
-
-    // 5) 震源 ✕ マーカー（統合後の各イベント）
-    events.forEach(function(ev){
-      const h = ev.hypo||{}, dt = depthText(h);
-      const lat=Number(h.latitude), lng=Number(h.longitude);
-      if(isNaN(lat)||isNaN(lng)||lat===0) return;
-      const epiIcon = L.divIcon({ className:"", html:"<div class='epi'>✕</div>", iconSize:[24,24], iconAnchor:[12,12] });
-      L.marker([lat,lng], { icon:epiIcon, title:"震源" }).addTo(quakeLayer)
-        .bindPopup("<div class='pp-name'>震源："+esc(h.name||"不明")+"</div><div class='meta'>"+esc(ev.time)+"</div>"+
-          (h.magnitude?"<div>M"+esc(h.magnitude)+"</div>":"")+(dt?"<div>"+esc(dt)+"</div>":"")+"<div>最大"+scaleLabel(ev.maxScale)+"</div>");
-    });
-  }
-
-  // ---------- Googleログイン ----------
-  let ID_TOKEN = "";
-  function hideGate(){ $("#authgate").style.display = "none"; }
-  function showGate(msgHtml, forbidden){
-    if(msgHtml) $("#authmsg").innerHTML = msgHtml;
-    $("#gbtn").style.display = forbidden ? "none" : "flex";
-    $("#authsub").innerHTML = "<a id='switchAcc'>別のGoogleアカウントでログインしなおす</a>";
-    const sw = document.getElementById("switchAcc");
-    if(sw) sw.addEventListener("click", function(){
-      try { google.accounts.id.disableAutoSelect(); } catch(e){}
-      location.reload();
-    });
-    $("#authgate").style.display = "flex";
-  }
-  function onCredential(resp){
-    if(!resp || !resp.credential) return;
-    ID_TOKEN = resp.credential;   // Google ID トークン（JWT）
-    hideGate();
-    loadData();
-  }
-  function initAuth(){
-    google.accounts.id.initialize({
-      client_id: GOOGLE_CLIENT_ID, callback: onCredential,
-      auto_select: true, use_fedcm_for_prompt: true
-    });
-    google.accounts.id.renderButton($("#gbtn"), { theme:"filled_blue", size:"large", text:"signin_with", shape:"pill" });
-    google.accounts.id.prompt();
-  }
-  // デモ（?demo=1）はログイン不要で地震の色分けだけ確認できる。通常はログインを開始。
-  if(!DEMO_QUAKE){
-    (function waitGIS(){
-      if(window.google && google.accounts && google.accounts.id){ initAuth(); }
-      else setTimeout(waitGIS, 150);
-    })();
-  }
-
-  // ---------- 起動・自動更新 ----------
-  // 「自分の状況を報告する」ボタンは、自分の id を付けて報告フォームへ（ログイン後に本人idで上書き）
-  $("#reportBtn").href = "report.html" + (VIEWER_ID ? "?id=" + encodeURIComponent(VIEWER_ID) : "");
-  $("#refreshBtn").addEventListener("click", function(){ loadData(); loadQuake(); });
-  $("#toggleBtn").addEventListener("click", function(){
-    const collapsed = $("#panel").classList.toggle("collapsed");
-    this.textContent = collapsed ? "名簿を開く" : "地図を広く";
-    setTimeout(function(){ map.invalidateSize(); }, 60); // 地図の再描画
-  });
-  loadGeo();              // 県境ポリゴンを一度だけ読み込み（地震取得後に色付け）
-  loadQuake();
-  if(DEMO_QUAKE){ hideGate(); }      // デモはゲートを外して地図を表示
-  else { loadData(); setInterval(loadData, REFRESH_MS); }  // 通常はログイン後にデータ取得
-  setInterval(loadQuake, QUAKE_MS);
 </script>
 </body>
 </html>
