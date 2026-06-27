@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="安否確認 anpi">
+  <defs>
+    <clipPath id="mapclip"><rect x="84" y="58" width="344" height="300" rx="30"/></clipPath>
+  </defs>
+  <!-- 背景 -->
+  <rect width="512" height="512" rx="104" fill="#0f172a"/>
+  <!-- 地図パネル -->
+  <rect x="84" y="58" width="344" height="300" rx="30" fill="#eef2f7"/>
+  <g clip-path="url(#mapclip)">
+    <!-- 緑地・道路で地図らしさを出す -->
+    <rect x="330" y="74" width="86" height="72" rx="12" fill="#cfe8d6"/>
+    <path d="M58 150 C 170 108 300 240 462 188" fill="none" stroke="#cad3de" stroke-width="22" stroke-linecap="round"/>
+    <path d="M252 38 C 216 150 300 250 198 382" fill="none" stroke="#dbe2ea" stroke-width="15" stroke-linecap="round"/>
+  </g>
+  <!-- 位置ピン -->
+  <path d="M256 148 c-39 0 -70 31 -70 70 0 51 70 110 70 110 s70 -59 70 -110 c0 -39 -31 -70 -70 -70 z" fill="#ef4444"/>
+  <circle cx="256" cy="216" r="24" fill="#ffffff"/>
+  <!-- 文字 -->
+  <text x="256" y="452" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="94" font-weight="800" fill="#ffffff" letter-spacing="3">anpi</text>
+</svg>
